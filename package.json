@@ -1,0 +1,21 @@
+{
+  "name": "g4-to-enbf",
+  "version": "1.0.0",
+  "description": "convert g4 (antlr) file to enbf",
+  "main": "index.js",
+  "scripts": {
+    "g4-to-ebnf": "ts-node g4-to-ebnf.ts"
+  },
+  "keywords": [
+    "g4",
+    "antlr",
+    "ebnf",
+    "convert"
+  ],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.2"
+  }
+}
