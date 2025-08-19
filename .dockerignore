@@ -1,0 +1,54 @@
+# Dependencies
+node_modules/
+npm-debug.log*
+
+# Build artifacts
+dist/
+
+# Source files (we only need the built dist/ in the container)
+*.ts
+tsconfig.json
+
+# Development files
+test/
+test-output/
+examples/
+
+# Git
+.git/
+.gitignore
+
+# CI/CD
+.gitlab-ci.yml
+.github/
+
+# Documentation
+README.md
+*.md
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+
+# Runtime data
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage/
+
+# Temporary folders
+tmp/
+temp/

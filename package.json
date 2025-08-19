@@ -1,22 +1,59 @@
 {
-  "name": "g4-to-enbf",
+  "name": "g4-to-ebnf",
   "version": "1.0.0",
-  "description": "convert g4 (antlr) file to enbf",
-  "main": "index.js",
-  "scripts": {
-    "g4-to-ebnf": "ts-node g4-to-ebnf.ts",
-    "check-ebnf": "ts-node ebnf-check.ts"
+  "description": "Convert ANTLR4 grammar files (.g4) to Extended Backus-Naur Form (EBNF)",
+  "main": "dist/g4-to-ebnf.js",
+  "bin": {
+    "g4-to-ebnf": "./dist/g4-to-ebnf.js",
+    "ebnf-check": "./dist/ebnf-check.js"
   },
+  "scripts": {
+    "build": "tsc",
+    "dev:g4-to-ebnf": "ts-node g4-to-ebnf.ts",
+    "dev:check-ebnf": "ts-node ebnf-check.ts",
+    "g4-to-ebnf": "node dist/g4-to-ebnf.js",
+    "check-ebnf": "node dist/ebnf-check.js",
+    "test": "npm run build && npm run test:integration",
+    "test:integration": "bash test/integration-test.sh",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run clean && npm run build",
+    "start": "npm run build"
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "LICENSE"
+  ],
   "keywords": [
-    "g4",
     "antlr",
+    "antlr4",
+    "g4",
     "ebnf",
-    "convert"
+    "grammar",
+    "parser",
+    "lexer",
+    "converter",
+    "cli",
+    "typescript"
   ],
   "author": "",
-  "license": "ISC",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/whispyy/g4-to-ebnf.git"
+  },
+  "bugs": {
+    "url": "https://github.com/whispyy/g4-to-ebnf/issues"
+  },
+  "homepage": "https://github.com/whispyy/g4-to-ebnf#readme",
+  "engines": {
+    "node": ">=22.0.0",
+    "npm": ">=6.0.0"
+  },
   "devDependencies": {
+    "@types/node": "^20.0.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.2"
-  }
+  },
+  "dependencies": {}
 }

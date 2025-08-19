@@ -1,0 +1,148 @@
+stages:
+  - build
+  - test
+  - convert
+  - validate
+
+variables:
+  NODE_VERSION: "22"
+
+# Cache node_modules for faster builds
+cache:
+  paths:
+    - node_modules/
+
+before_script:
+  - node --version
+  - npm --version
+
+# Build stage - compile TypeScript
+build:
+  stage: build
+  image: node:${NODE_VERSION}
+  script:
+    - npm ci
+    - npm run build
+  artifacts:
+    paths:
+      - dist/
+    expire_in: 1 hour
+  only:
+    - main
+    - merge_requests
+    - tags
+
+# Test stage - run integration tests
+test:
+  stage: test
+  image: node:${NODE_VERSION}
+  dependencies:
+    - build
+  script:
+    - npm run test
+  artifacts:
+    reports:
+      junit: test-results.xml
+    paths:
+      - test-output/
+    expire_in: 1 day
+    when: always
+  only:
+    - main
+    - merge_requests
+    - tags
+
+# Convert stage - generate EBNF from grammar files
+convert_grammars:
+  stage: convert
+  image: node:${NODE_VERSION}
+  dependencies:
+    - build
+  script:
+    - mkdir -p output
+    # Convert all .g4 files found in the repository
+    - |
+      find . -name "*.g4" -not -path "./node_modules/*" -not -path "./dist/*" | while read -r g4_file; do
+        if [ -f "$g4_file" ]; then
+          base_name=$(basename "$g4_file" .g4)
+          dir_name=$(dirname "$g4_file")
+          echo "Converting $g4_file to ${base_name}.ebnf"
+          npm run g4-to-ebnf -- "$g4_file" > "output/${base_name}.ebnf"
+        fi
+      done
+    # Handle paired lexer/parser files (common pattern)
+    - |
+      for lexer_file in $(find . -name "*Lexer.g4" -not -path "./node_modules/*" -not -path "./dist/*"); do
+        if [ -f "$lexer_file" ]; then
+          base_name=$(basename "$lexer_file" Lexer.g4)
+          parser_file=$(dirname "$lexer_file")/${base_name}Parser.g4
+          if [ -f "$parser_file" ]; then
+            echo "Converting paired grammar files: $lexer_file and $parser_file"
+            npm run g4-to-ebnf -- "$lexer_file" "$parser_file" > "output/${base_name}Complete.ebnf"
+          fi
+        fi
+      done
+    # List generated files
+    - echo "Generated EBNF files:"
+    - ls -la output/ || echo "No EBNF files generated"
+  artifacts:
+    paths:
+      - output/
+    expire_in: 1 week
+  only:
+    - main
+    - merge_requests
+    - tags
+
+# Validate stage - check generated EBNF files
+validate_ebnf:
+  stage: validate
+  image: node:${NODE_VERSION}
+  dependencies:
+    - build
+    - convert_grammars
+  script:
+    - |
+      exit_code=0
+      if [ -d "output" ] && [ "$(ls -A output)" ]; then
+        for ebnf_file in output/*.ebnf; do
+          if [ -f "$ebnf_file" ]; then
+            echo "Validating $ebnf_file"
+            if npm run check-ebnf -- "$ebnf_file"; then
+              echo "✅ Validation passed for $ebnf_file"
+            else
+              echo "❌ Validation failed for $ebnf_file"
+              exit_code=1
+            fi
+          fi
+        done
+      else
+        echo "No EBNF files found to validate"
+        exit_code=1
+      fi
+      exit $exit_code
+  artifacts:
+    paths:
+      - output/
+    expire_in: 1 week
+    when: always
+  only:
+    - main
+    - merge_requests
+    - tags
+
+# Optional: Manual deployment/publish stage for releases
+publish:
+  stage: .post
+  image: node:${NODE_VERSION}
+  dependencies:
+    - build
+    - test
+    - validate_ebnf
+  script:
+    - echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > .npmrc
+    - npm publish
+  only:
+    - tags
+  when: manual
+  allow_failure: true

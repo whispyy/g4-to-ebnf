@@ -1,9 +1,12 @@
 # Project specific
-examples/
+dist/
+test-output/
 *.ebnf
 
 # node/ts
 node_modules/
+npm-debug.log*
 
 # OS
 .DS_Store
+Thumbs.db

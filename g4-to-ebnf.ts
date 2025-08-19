@@ -1,4 +1,4 @@
-#!/usr/bin/env ts-node
+#!/usr/bin/env node
 
 /**
  * g4-to-ebnf.ts
@@ -13,14 +13,66 @@
  * Limitations: heuristic, not a full ANTLR parser. See comments near the end.
  */
 
-import { readFileSync } from "fs";
+import { readFileSync, existsSync } from "fs";
 import * as path from "path";
+
+// ---------- Error Handling ----------
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error.message);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled Rejection:', reason);
+  process.exit(1);
+});
 
 // ---------- CLI ----------
 const args = process.argv.slice(2);
+
+// Handle help flag
+if (args.includes('--help') || args.includes('-h')) {
+  console.log(`
+G4 to EBNF Converter v1.0.0
+
+Usage: g4-to-ebnf <Grammar.g4> [OtherGrammar.g4] > output.ebnf
+
+Arguments:
+  Grammar.g4        ANTLR4 grammar file (required)
+  OtherGrammar.g4   Second ANTLR4 grammar file (optional)
+
+Options:
+  --help, -h        Show this help message
+  --version, -v     Show version information
+
+Examples:
+  g4-to-ebnf MyLexer.g4 > output.ebnf
+  g4-to-ebnf MyLexer.g4 MyParser.g4 > combined.ebnf
+`);
+  process.exit(0);
+}
+
+// Handle version flag
+if (args.includes('--version') || args.includes('-v')) {
+  console.log('1.0.0');
+  process.exit(0);
+}
+
 if (args.length < 1 || args.length > 2) {
-  console.error("Usage: ts-node g4-to-ebnf.ts <Grammar.g4> [OtherGrammar.g4] > out.ebnf");
+  console.error("Usage: g4-to-ebnf <Grammar.g4> [OtherGrammar.g4] > output.ebnf");
+  console.error("Use --help for more information");
   process.exit(1);
+}
+
+// Validate input files exist
+for (const filePath of args) {
+  if (!existsSync(filePath)) {
+    console.error(`Error: File '${filePath}' does not exist`);
+    process.exit(1);
+  }
+  if (!filePath.toLowerCase().endsWith('.g4')) {
+    console.error(`Warning: File '${filePath}' does not have .g4 extension`);
+  }
 }
 
 // ---------- Core types ----------
@@ -200,27 +252,32 @@ function inferGrammarKind(originalText: string, rules: Rule[]): GrammarKind {
 
 // Process one file into rules + metadata
 function processFile(filePath: string): ProcessedFile {
-  const raw = readFileSync(filePath, "utf8");
+  try {
+    const raw = readFileSync(filePath, "utf8");
 
-  let text = raw;
-  text = removeBlockComments(text);
-  text = removeLineComments(text);
-  text = stripAtActions(text);
-  const forKindDetection = text; // keep a copy before we remove headers
+    let text = raw;
+    text = removeBlockComments(text);
+    text = removeLineComments(text);
+    text = stripAtActions(text);
+    const forKindDetection = text; // keep a copy before we remove headers
 
-  text = stripGrammarHeader(text);
-  text = stripTopLevelBlocks(text);
-  text = stripRuleAnnotations(text);
-  text = stripLabeledAlternatives(text);
-  text = stripElementLabels(text);
-  text = stripLexerCommands(text);
-  text = stripBracedCode(text);
-  text = collapseWhitespace(text);
+    text = stripGrammarHeader(text);
+    text = stripTopLevelBlocks(text);
+    text = stripRuleAnnotations(text);
+    text = stripLabeledAlternatives(text);
+    text = stripElementLabels(text);
+    text = stripLexerCommands(text);
+    text = stripBracedCode(text);
+    text = collapseWhitespace(text);
 
-  const rules = extractRules(text);
-  const kind = inferGrammarKind(forKindDetection, rules);
+    const rules = extractRules(text);
+    const kind = inferGrammarKind(forKindDetection, rules);
 
-  return { filePath, kind, rules };
+    return { filePath, kind, rules };
+  } catch (error) {
+    console.error(`Error processing file '${filePath}':`, error instanceof Error ? error.message : error);
+    process.exit(1);
+  }
 }
 
 // Emit a single rule in basic EBNF flavor

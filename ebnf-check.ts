@@ -1,4 +1,4 @@
-#!/usr/bin/env ts-node
+#!/usr/bin/env node
 
 /**
  * ebnf-check.ts
@@ -8,16 +8,65 @@
  * - Comments: (* ... *)  // ...  /* ... *\/
  */
 
-import { readFileSync } from "fs";
+import { readFileSync, existsSync } from "fs";
 import * as path from "path";
+
+// ---- Error Handling ----
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error.message);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled Rejection:', reason);
+  process.exit(1);
+});
 
 // ---- CLI ----
 const args = process.argv.slice(2);
+
+// Handle help flag
+if (args.includes('--help') || args.includes('-h')) {
+  console.log(`
+EBNF Checker v1.0.0
+
+Usage: ebnf-check <file.ebnf> [--start <ruleName>]
+
+Arguments:
+  file.ebnf         EBNF file to validate (required)
+
+Options:
+  --start <rule>    Specify start rule for reachability analysis
+  --help, -h        Show this help message
+  --version, -v     Show version information
+
+Examples:
+  ebnf-check grammar.ebnf
+  ebnf-check grammar.ebnf --start program
+`);
+  process.exit(0);
+}
+
+// Handle version flag
+if (args.includes('--version') || args.includes('-v')) {
+  console.log('1.0.0');
+  process.exit(0);
+}
+
 if (args.length < 1) {
-  console.error("Usage: ts-node ebnf-check.ts <file.ebnf> [--start <ruleName>]");
+  console.error("Usage: ebnf-check <file.ebnf> [--start <ruleName>]");
+  console.error("Use --help for more information");
   process.exit(1);
 }
+
 const filePath = args[0];
+
+// Validate input file exists
+if (!existsSync(filePath)) {
+  console.error(`Error: File '${filePath}' does not exist`);
+  process.exit(1);
+}
+
 let startOverride = "";
 for (let i = 1; i < args.length; i++) {
   if (args[i] === "--start") startOverride = args[i + 1] ?? "";
@@ -176,7 +225,14 @@ function firstIdentifier(expr: string): string | null {
 }
 
 // ---- Main ----
-const raw = read(filePath);
+let raw: string;
+try {
+  raw = read(filePath);
+} catch (error) {
+  console.error(`Error reading file '${filePath}':`, error instanceof Error ? error.message : error);
+  process.exit(1);
+}
+
 const stripped = stripComments(raw);
 const rules = extractRules(stripped);
 
