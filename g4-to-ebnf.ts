@@ -3,84 +3,84 @@
 /**
  * g4-to-ebnf.ts
  *
- * A pragmatic converter from ANTLR4 .g4 grammars to a simple EBNF flavor.
- * - Keeps rules and operators (: | ( ) ? * +) as much as possible
- * - Converts `name: rhs;` into `name ::= rhs ;`
- * - Removes or simplifies ANTLR-specific features:
- *   - grammar headers, options/imports/tokens/channels/modes blocks
- *   - @actions, semantic predicates, {...}, {...}? (predicates), -> commands
- *   - element labels (x=ID), labeled alts (#AltName), rule params/returns/locals
- *   - lexer commands (-> skip, -> channel(HIDDEN), etc.)
- * - Treats fragment rules like normal lexer rules (keeps their name & rhs)
+ * Converts one or two ANTLR4 .g4 grammars (parser and/or lexer) into a simple EBNF.
+ * - If two files are provided (any order), outputs:
+ *     (* Parser rules from X.g4 *) ... 
+ *     (* Lexer rules from Y.g4  *) ...
+ * - If a single file contains both kinds of rules, they’re split into sections.
+ * - Strips ANTLR-specific constructs (actions, predicates, commands, headers, etc.).
  *
- * Limitations:
- * - Doesn’t fully parse ANTLR; uses careful regexes + token-ish passes.
- * - Complement sets (~) and some set ops are preserved literally.
- * - If your grammar uses exotic features, you may need light manual edits after.
+ * Limitations: heuristic, not a full ANTLR parser. See comments near the end.
  */
 
 import { readFileSync } from "fs";
 import * as path from "path";
 
-const inputPath = process.argv[2];
-if (!inputPath) {
-  console.error("Usage: ts-node g4-to-ebnf.ts path/to/Grammar.g4 > Grammar.ebnf");
+// ---------- CLI ----------
+const args = process.argv.slice(2);
+if (args.length < 1 || args.length > 2) {
+  console.error("Usage: ts-node g4-to-ebnf.ts <Grammar.g4> [OtherGrammar.g4] > out.ebnf");
   process.exit(1);
 }
 
-const raw = readFileSync(inputPath, "utf8");
+// ---------- Core types ----------
+type Rule = {
+  name: string;
+  isLexer: boolean;      // UPPERCASE rule names are treated as lexer rules
+  rhs: string;
+  isFragment: boolean;   // for lexer fragments
+};
 
-// ---------- Helpers ----------
-const removeBlockComments = (s: string) =>
-  s.replace(/\/\*[\s\S]*?\*\//g, "");
+type GrammarKind = "parser" | "lexer" | "unknown";
 
+type ProcessedFile = {
+  filePath: string;
+  kind: GrammarKind;
+  rules: Rule[];
+};
+
+// ---------- Utilities ----------
+const sl = (p: string) => p.replace(/\\/g, "/");
+
+// Remove /* ... */ comments
+const removeBlockComments = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, "");
+
+// Remove // line comments (IMPORTANT: escape the slashes)
 const removeLineComments = (s: string) =>
-  s.replace(/(^|\s)\/\/.*$/gm, (_match, p1) => (p1 ? p1 : ""));
+  s.replace(/(^|\s)\/\/.*$/gm, (_m, p1) => (p1 ? p1 : ""));
 
-const collapseWhitespace = (s: string) =>
-  s.replace(/[ \t]+/g, " ").replace(/\r/g, "");
+// collapse spaces, keep newlines meaningful later
+const collapseWhitespace = (s: string) => s.replace(/[ \t]+/g, " ").replace(/\r/g, "");
 
-// Removes all @... { ... } action blocks (single or nested braces).
+// Strip @members / @actions blocks with nested braces
 function stripAtActions(s: string): string {
-  // Matches e.g. @members { ... } or @parser::members { ... }
   return s.replace(/@[a-zA-Z_][\w:]*\s*\{(?:[^{}]|\{[^{}]*\})*\}/g, "");
 }
 
-// Remove braces blocks that are semantic actions/predicates in rules.
-// We try to avoid touching character classes [ ... ].
+// Remove braces blocks for code actions/predicates, incl. {...}?
 function stripBracedCode(s: string): string {
-  // { ... } or {...}? (predicate) — remove them entirely.
   return s.replace(/\{(?:[^{}]|\{[^{}]*\})*\}\??/g, "");
 }
 
-// Remove -> commands (e.g., -> skip, -> channel(HIDDEN), -> more)
+// Remove lexer commands like -> skip, -> channel(HIDDEN)
 function stripLexerCommands(s: string): string {
-  // Match "->" up to next ; or | (keep the ; or |)
   return s.replace(/->[^;|)]+/g, "");
 }
 
-// Remove rule parameters, returns, locals e.g. name[params] returns[...] locals[...]
+// Remove rule annotations: params/returns/locals and element labels
 function stripRuleAnnotations(s: string): string {
   return s
-    // name [ ... ]
-    .replace(/([a-zA-Z_]\w*)\s*\[[^\]]*\]/g, "$1")
-    // returns [ ... ]
+    .replace(/([a-zA-Z_]\w*)\s*\[[^\]]*\]/g, "$1") // name[...]
     .replace(/\breturns\s*\[[^\]]*\]/gi, "")
-    // locals [ ... ]
     .replace(/\blocals\s*\[[^\]]*\]/gi, "");
 }
 
-// Remove labeled alts: `#Name`
-function stripLabeledAlternatives(s: string): string {
-  return s.replace(/#[A-Za-z_]\w*/g, "");
-}
+// Remove labeled alts (#Alt) and element labels (x=ID / t+=ID)
+const stripLabeledAlternatives = (s: string) => s.replace(/#[A-Za-z_]\w*/g, "");
+const stripElementLabels = (s: string) =>
+  s.replace(/\b[A-Za-z_]\w*\s*\+=\s*|\b[A-Za-z_]\w*\s*=\s*/g, "");
 
-// Remove element labels `x=ID` → `ID`, `t+=ID` → `ID`
-function stripElementLabels(s: string): string {
-  return s.replace(/\b[A-Za-z_]\w*\s*\+=\s*|\b[A-Za-z_]\w*\s*=\s*/g, "");
-}
-
-// Strip `options { ... }`, `tokens { ... }`, `channels { ... }`, `import ...;`, `mode NAME;`
+// Strip headers/blocks: grammar X; options/tokens/channels/import/mode
 function stripTopLevelBlocks(s: string): string {
   let out = s;
   out = out.replace(/\boptions\s*\{[^}]*\}\s*;?/gi, "");
@@ -91,12 +91,12 @@ function stripTopLevelBlocks(s: string): string {
   return out;
 }
 
-// Strip `grammar Xxx;`, `parser grammar Xxx;`, `lexer grammar Xxx;`
+// Strip "grammar X;", "parser grammar X;", "lexer grammar X;"
 function stripGrammarHeader(s: string): string {
   return s.replace(/\b(?:parser\s+|lexer\s+)?grammar\s+[A-Za-z_]\w*\s*;/gi, "");
 }
 
-// Normalize spacing around rule separators and operators
+// Normalize spacing around operators
 function tidyOperators(s: string): string {
   return s
     .replace(/\|/g, " | ")
@@ -107,116 +107,168 @@ function tidyOperators(s: string): string {
     .replace(/\*/g, " * ")
     .replace(/\+/g, " + ")
     .replace(/\s+/g, " ")
-    .replace(/\s*;\s*/g, " ;\n"); // one rule per line
+    .replace(/\s*;\s*/g, " ;\n");
 }
 
-// Extract rules roughly: [fragment] NAME ':' ... ';'
-type Rule = { name: string; isLexer: boolean; rhs: string; isFragment: boolean };
-
+// Extract rules by scanning for "name : ... ;"
 function extractRules(s: string): Rule[] {
   const rules: Rule[] = [];
-  // We’ll scan semi-colon terminated chunks and look for "name : rhs ;"
   const pieces = s.split(/;(?![^\[]*\])/g); // split by ; not inside [...]
   for (let piece of pieces) {
     const trimmed = piece.trim();
     if (!trimmed) continue;
 
-    // Handle "fragment NAME : ... "
+    // fragment LEXRULE : ...
     const fragMatch = trimmed.match(/^fragment\s+([A-Z_]\w*)\s*:\s*([\s\S]*)$/);
     if (fragMatch) {
       const [, name, rhsRaw] = fragMatch;
-      const rhs = rhsRaw.trim();
-      rules.push({ name, isLexer: true, rhs, isFragment: true });
+      rules.push({ name, isLexer: true, rhs: rhsRaw.trim(), isFragment: true });
       continue;
     }
 
-    // Lexer rule: UPPERNAME : ...
+    // Lexer rule (UPPER)
     const lexMatch = trimmed.match(/^([A-Z_]\w*)\s*:\s*([\s\S]*)$/);
     if (lexMatch) {
       const [, name, rhsRaw] = lexMatch;
-      const rhs = rhsRaw.trim();
-      rules.push({ name, isLexer: true, rhs, isFragment: false });
+      rules.push({ name, isLexer: true, rhs: rhsRaw.trim(), isFragment: false });
       continue;
     }
 
-    // Parser rule: lowername : ...
+    // Parser rule (lower)
     const parMatch = trimmed.match(/^([a-z_]\w*)\s*:\s*([\s\S]*)$/);
     if (parMatch) {
       const [, name, rhsRaw] = parMatch;
-      const rhs = rhsRaw.trim();
-      rules.push({ name, isLexer: false, rhs, isFragment: false });
+      rules.push({ name, isLexer: false, rhs: rhsRaw.trim(), isFragment: false });
       continue;
     }
-
-    // Not a rule; ignore stray stuff.
   }
   return rules;
 }
 
-// Post-process RHS:
-// - remove predicates/actions/commands already stripped at top-level, but do a safety pass
-// - collapse whitespace inside RHS, remove trailing pipes, etc.
 function cleanRHS(rhs: string): string {
   let r = rhs;
   r = stripLexerCommands(r);
   r = stripBracedCode(r);
   r = stripLabeledAlternatives(r);
   r = stripElementLabels(r);
-  // Keep character classes and quoted strings verbatim; reduce spaces elsewhere.
   r = r.replace(/\s+/g, " ").trim();
-  // Remove trailing pipe if any
   r = r.replace(/\|\s*$/, "").trim();
   return r;
 }
 
-// ---------- Pipeline ----------
-let text = raw;
+// Try to infer file "kind" from header text or majority of rules
+function inferGrammarKind(originalText: string, rules: Rule[]): GrammarKind {
+  const header = originalText.slice(0, 500);
+  if (/\blexer\s+grammar\b/i.test(header)) return "lexer";
+  if (/\bparser\s+grammar\b/i.test(header)) return "parser";
+  // fallback: majority of rule kinds
+  const lexCount = rules.filter(r => r.isLexer).length;
+  const parCount = rules.filter(r => !r.isLexer).length;
+  if (lexCount && !parCount) return "lexer";
+  if (parCount && !lexCount) return "parser";
+  return "unknown";
+}
 
-// 1) Remove comments & actions early
-text = removeBlockComments(text);
-text = removeLineComments(text);
-text = stripAtActions(text);
+// Process one file into rules + metadata
+function processFile(filePath: string): ProcessedFile {
+  const raw = readFileSync(filePath, "utf8");
 
-// 2) Strip top-level ANTLR structures
-text = stripGrammarHeader(text);
-text = stripTopLevelBlocks(text);
+  let text = raw;
+  text = removeBlockComments(text);
+  text = removeLineComments(text);
+  text = stripAtActions(text);
+  const forKindDetection = text; // keep a copy before we remove headers
 
-// 3) Remove rule annotations/labels/predicates/actions/commands
-text = stripRuleAnnotations(text);
-text = stripLabeledAlternatives(text);
-text = stripElementLabels(text);
-text = stripLexerCommands(text);
-text = stripBracedCode(text);
+  text = stripGrammarHeader(text);
+  text = stripTopLevelBlocks(text);
+  text = stripRuleAnnotations(text);
+  text = stripLabeledAlternatives(text);
+  text = stripElementLabels(text);
+  text = stripLexerCommands(text);
+  text = stripBracedCode(text);
+  text = collapseWhitespace(text);
 
-// 4) Normalize operators a bit (mainly to help splitting)
-text = collapseWhitespace(text);
+  const rules = extractRules(text);
+  const kind = inferGrammarKind(forKindDetection, rules);
 
-// 5) Extract rules
-const rules = extractRules(text);
+  return { filePath, kind, rules };
+}
 
-// 6) Emit EBNF
-const lines: string[] = [];
-lines.push("(* Auto-converted from ANTLR4 by g4-to-ebnf.ts — edit as needed. *)");
-lines.push("");
+// Emit a single rule in basic EBNF flavor
+function emitRule(r: Rule): string {
+  const rhs = tidyOperators(cleanRHS(r.rhs)).trim().replace(/\s*;\s*$/g, "");
+  const header = `${r.name} ::=`;
+  const body = ` ${rhs} ;`;
+  return r.isFragment ? `(* fragment *) ${header}${body}` : `${header}${body}`;
+}
 
-for (const rule of rules) {
-  const rhs = cleanRHS(rule.rhs);
+// ---------- Main ----------
+const processed: ProcessedFile[] = args.map(processFile);
 
-  // Minimal prettification: ensure spaces around | and parentheses
-  const pretty = tidyOperators(rhs).trim();
+// Gather all rules; also remember which came from which file for comments.
+const allParserRules: { rule: Rule; from: string }[] = [];
+const allLexerRules: { rule: Rule; from: string }[] = [];
 
-  // We pick a simple EBNF flavor: name ::= rhs ;
-  // (You can change to '=' or ':' as you wish.)
-  const header = `${rule.name} ::=`;
-  const body = ` ${pretty.replace(/\s*;\s*$/g, "")} ;`;
-
-  // Optional comment for fragments to remind the user
-  if (rule.isFragment) {
-    lines.push(`(* fragment *) ${header}${body}`);
-  } else {
-    lines.push(`${header}${body}`);
+for (const pf of processed) {
+  for (const r of pf.rules) {
+    if (r.isLexer) {
+      allLexerRules.push({ rule: r, from: sl(pf.filePath) });
+    } else {
+      allParserRules.push({ rule: r, from: sl(pf.filePath) });
+    }
   }
 }
 
-const out = lines.join("\n");
-process.stdout.write(out);
+// Build header
+const lines: string[] = [];
+if (processed.length === 2) {
+  const A = sl(processed[0].filePath);
+  const B = sl(processed[1].filePath);
+  lines.push(`(* Source files: ${A} , ${B} *)`);
+} else {
+  lines.push(`(* Source file: ${sl(processed[0].filePath)} *)`);
+}
+lines.push("");
+
+// Emit parser section (if any)
+if (allParserRules.length > 0) {
+  const fromSet = new Set(allParserRules.map(x => x.from));
+  const fromStr = Array.from(fromSet).join(", ");
+  lines.push(`(* ======================== *)`);
+  lines.push(`(* Parser rules from: ${fromStr} *)`);
+  lines.push(`(* ======================== *)`);
+  lines.push("");
+  for (const { rule } of allParserRules) {
+    lines.push(emitRule(rule));
+  }
+  lines.push("");
+}
+
+// Emit lexer section (if any)
+if (allLexerRules.length > 0) {
+  const fromSet = new Set(allLexerRules.map(x => x.from));
+  const fromStr = Array.from(fromSet).join(", ");
+  lines.push(`(* ======================= *)`);
+  lines.push(`(* Lexer rules from: ${fromStr} *)`);
+  lines.push(`(* ======================= *)`);
+  lines.push("");
+  for (const { rule } of allLexerRules) {
+    lines.push(emitRule(rule));
+  }
+  lines.push("");
+}
+
+// If no rules at all, warn
+if (allParserRules.length === 0 && allLexerRules.length === 0) {
+  lines.push("(* No rules were found after stripping ANTLR-specific constructs. *)");
+}
+
+process.stdout.write(lines.join("\n"));
+
+/**
+ * Notes & Limitations:
+ * - Complement sets (~) and complex lexer sets are kept as-is; some EBNF consumers may need tweaks.
+ * - Channels/modes/commands aren’t translated (intentionally dropped).
+ * - Deeply nested code in { ... } could be over-stripped in exotic cases.
+ * - If you need a specific EBNF dialect (ISO/Wirth), we can adjust the emitter.
+ */

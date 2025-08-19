@@ -1,3 +1,4 @@
 
 
 npm run g4-to-ebnf --silent -- examples/QQLLexer.g4 > QQLLexer.ebnf
+npm run g4-to-ebnf --silent -- examples/QQLLexer.g4 examples/QQLParser.g4 > QQLLexerParser.ebnf
