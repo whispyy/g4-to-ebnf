@@ -62,9 +62,18 @@ function stripBracedCode(s: string): string {
   return s.replace(/\{(?:[^{}]|\{[^{}]*\})*\}\??/g, "");
 }
 
-// Remove lexer commands like -> skip, -> channel(HIDDEN)
+// Remove lexer commands entirely, including their (...) args and comma-separated lists
 function stripLexerCommands(s: string): string {
-  return s.replace(/->[^;|)]+/g, "");
+  // Matches: -> skip
+  //          -> channel(HIDDEN)
+  //          -> type(ID)
+  //          -> pushMode(M), more
+  //          -> mode(MYMODE)
+  // Removes the whole "-> ..." chunk, including any (...) and comma-separated commands.
+  return s.replace(
+    /->\s*[a-zA-Z_]\w*(?:\s*\([^()]*\))?(?:\s*,\s*[a-zA-Z_]\w*(?:\s*\([^()]*\))?)*\s*/g,
+    ""
+  );
 }
 
 // Remove rule annotations: params/returns/locals and element labels
@@ -98,17 +107,37 @@ function stripGrammarHeader(s: string): string {
 
 // Normalize spacing around operators
 function tidyOperators(s: string): string {
-  return s
-    .replace(/\|/g, " | ")
-    .replace(/:/g, " : ")
-    .replace(/\(/g, " ( ")
-    .replace(/\)/g, " ) ")
-    .replace(/\?/g, " ? ")
-    .replace(/\*/g, " * ")
-    .replace(/\+/g, " + ")
-    .replace(/\s+/g, " ")
-    .replace(/\s*;\s*/g, " ;\n");
+  let out = "";
+  let inSingle = false, inDouble = false, inClass = false;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+
+    // Enter/exit string or class contexts
+    if (!inDouble && !inClass && ch === "'") { inSingle = !inSingle; out += ch; continue; }
+    if (!inSingle && !inClass && ch === '"') { inDouble = !inDouble; out += ch; continue; }
+    if (!inSingle && !inDouble && ch === "[") { inClass = true; out += ch; continue; }
+    if (inClass) {
+      out += ch;
+      if (ch === "\\" && i + 1 < s.length) { out += s[++i]; }      // escape inside [...]
+      else if (ch === "]") inClass = false;
+      continue;
+    }
+    if (inSingle || inDouble) {
+      out += ch;
+      if (ch === "\\" && i + 1 < s.length) { out += s[++i]; }       // escape in strings
+      continue;
+    }
+
+    // Outside of strings/classes: add spaces around grammar operators
+    if (ch === '|' || ch === ':' || ch === '(' || ch === ')' || ch === '?' || ch === '*' || ch === '+') {
+      out += ` ${ch} `;
+    } else {
+      out += ch;
+    }
+  }
+  return out.replace(/\s+/g, " ").trim();
 }
+
 
 // Extract rules by scanning for "name : ... ;"
 function extractRules(s: string): Rule[] {

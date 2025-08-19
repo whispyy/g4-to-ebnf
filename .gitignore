@@ -1,4 +1,9 @@
-node_modules/
+# Project specific
 examples/
+*.ebnf
 
+# node/ts
+node_modules/
+
+# OS
 .DS_Store

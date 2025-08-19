@@ -4,7 +4,8 @@
   "description": "convert g4 (antlr) file to enbf",
   "main": "index.js",
   "scripts": {
-    "g4-to-ebnf": "ts-node g4-to-ebnf.ts"
+    "g4-to-ebnf": "ts-node g4-to-ebnf.ts",
+    "check-ebnf": "ts-node ebnf-check.ts"
   },
   "keywords": [
     "g4",
