@@ -1,9 +1,10 @@
 # G4 to EBNF Converter
 
-[![CI/CD Pipeline](https://github.com/yourusername/g4-to-ebnf/workflows/CI%2FCD%20Pipeline/badge.svg)](https://github.com/yourusername/g4-to-ebnf/actions)
-[![Publish to NPM](https://github.com/yourusername/g4-to-ebnf/workflows/Publish%20to%20NPM/badge.svg)](https://github.com/yourusername/g4-to-ebnf/actions)
-[![npm version](https://badge.fury.io/js/g4-to-ebnf.svg)](https://badge.fury.io/js/g4-to-ebnf)
-[![Docker](https://img.shields.io/docker/v/yourusername/g4-to-ebnf?label=docker)](https://hub.docker.com/r/yourusername/g4-to-ebnf)
+[![CI/CD Pipeline](https://github.com/whispyy/g4-to-ebnf/actions/workflows/ci.yml/badge.svg)](https://github.com/whispyy/g4-to-ebnf/actions/workflows/ci.yml)
+[![Publish to NPM](https://github.com/whispyy/g4-to-ebnf/actions/workflows/publish.yml/badge.svg)](https://github.com/whispyy/g4-to-ebnf/actions/workflows/publish.yml)
+[![npm version](https://img.shields.io/npm/v/g4-to-ebnf.svg)](https://www.npmjs.com/package/g4-to-ebnf)
+[![npm downloads](https://img.shields.io/npm/dm/g4-to-ebnf.svg)](https://www.npmjs.com/package/g4-to-ebnf)
+[![Docker](https://img.shields.io/docker/v/whispyy/g4-to-ebnf?label=docker)](https://hub.docker.com/r/whispyy/g4-to-ebnf)
 
 Convert ANTLR4 grammar files (.g4) to Extended Backus-Naur Form (EBNF) with validation and CI/CD support.
 

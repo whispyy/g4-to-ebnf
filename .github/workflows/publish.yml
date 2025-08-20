@@ -6,6 +6,10 @@ on:
       - 'v*'  # Triggers on version tags like v1.0.0, v1.2.3, etc.
   workflow_dispatch:  # Allows manual triggering
 
+permissions:
+  contents: write  # Required for creating releases
+  packages: write  # Required for publishing packages
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -121,39 +125,15 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Create GitHub Release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ github.ref }}
-          release_name: Release ${{ steps.version.outputs.version }}
-          body: |
-            ## Changes in v${{ steps.version.outputs.version }}
-            
-            ### Features
-            - Convert ANTLR4 grammar files (.g4) to Extended Backus-Naur Form (EBNF)
-            - Validate generated EBNF files for syntax correctness
-            - CLI tools with comprehensive help and error handling
-            - Docker support for containerized environments
-            - Complete CI/CD pipeline support
-            
-            ### Installation
-            ```bash
-            npm install -g g4-to-ebnf@${{ steps.version.outputs.version }}
-            ```
-            
-            ### Usage
-            ```bash
-            # Convert grammar file
-            g4-to-ebnf MyGrammar.g4 > output.ebnf
-            
-            # Validate EBNF
-            ebnf-check output.ebnf
-            ```
-            
-            See the [README](https://github.com/${{ github.repository }}/blob/main/README.md) for complete documentation.
+          tag_name: v${{ steps.version.outputs.version }}
+          name: Release v${{ steps.version.outputs.version }}
+          generate_release_notes: true
           draft: false
           prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   check-docker-secrets:
     needs: [test, publish]

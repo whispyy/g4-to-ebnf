@@ -1,0 +1,48 @@
+changelog:
+  exclude:
+    labels:
+      - ignore-for-release
+      - dependencies
+      - duplicate
+      - question
+      - invalid
+      - wontfix
+  categories:
+    - title: 🚀 New Features
+      labels:
+        - feature
+        - enhancement
+        - new-feature
+    - title: 🐛 Bug Fixes
+      labels:
+        - bug
+        - bugfix
+        - fix
+    - title: 📚 Documentation
+      labels:
+        - documentation
+        - docs
+    - title: 🔧 Maintenance
+      labels:
+        - maintenance
+        - refactor
+        - cleanup
+        - chore
+    - title: 🔒 Security
+      labels:
+        - security
+    - title: ⚡ Performance
+      labels:
+        - performance
+        - optimization
+    - title: 🧪 Testing
+      labels:
+        - test
+        - testing
+    - title: 📦 Dependencies
+      labels:
+        - dependencies
+        - deps
+    - title: Other Changes
+      labels:
+        - "*"
