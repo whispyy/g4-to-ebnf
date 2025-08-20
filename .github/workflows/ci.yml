@@ -1,0 +1,188 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [22]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build project
+        run: npm run build
+
+      - name: Run tests
+        run: npm test
+
+      - name: Test CLI functionality
+        run: |
+          # Test help and version commands
+          npm run g4-to-ebnf -- --help
+          npm run check-ebnf -- --help
+          npm run g4-to-ebnf -- --version
+          npm run check-ebnf -- --version
+          
+          # Test with example grammar
+          npm run g4-to-ebnf -- examples/SimpleLexer.g4 > test-simple.ebnf
+          npm run check-ebnf -- test-simple.ebnf
+          
+          echo "✅ CLI tests passed"
+
+      - name: Upload test artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-node-${{ matrix.node-version }}
+          path: |
+            test-output/
+            *.ebnf
+
+  convert-grammars:
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'push'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies and build
+        run: |
+          npm ci
+          npm run build
+
+      - name: Convert all grammar files
+        run: |
+          mkdir -p output
+          
+          # Find and convert all .g4 files
+          find . -name "*.g4" -not -path "./node_modules/*" -not -path "./dist/*" | while read -r g4_file; do
+            if [ -f "$g4_file" ]; then
+              base_name=$(basename "$g4_file" .g4)
+              dir_name=$(dirname "$g4_file" | sed 's|^\./||')
+              output_name="${dir_name//\//_}_${base_name}"
+              
+              echo "Converting $g4_file to output/${output_name}.ebnf"
+              npm run g4-to-ebnf -- "$g4_file" > "output/${output_name}.ebnf"
+            fi
+          done
+          
+          # Handle paired lexer/parser files
+          for lexer_file in $(find . -name "*Lexer.g4" -not -path "./node_modules/*" -not -path "./dist/*"); do
+            if [ -f "$lexer_file" ]; then
+              base_name=$(basename "$lexer_file" Lexer.g4)
+              dir_name=$(dirname "$lexer_file")
+              parser_file="${dir_name}/${base_name}Parser.g4"
+              
+              if [ -f "$parser_file" ]; then
+                output_name="$(dirname "$lexer_file" | sed 's|^\./||' | tr '/' '_')_${base_name}Complete"
+                echo "Converting paired grammars: $lexer_file + $parser_file to output/${output_name}.ebnf"
+                npm run g4-to-ebnf -- "$lexer_file" "$parser_file" > "output/${output_name}.ebnf"
+              fi
+            fi
+          done
+          
+          echo "Generated EBNF files:"
+          ls -la output/ || echo "No EBNF files generated"
+
+      - name: Validate generated EBNF files
+        run: |
+          exit_code=0
+          if [ -d "output" ] && [ "$(ls -A output 2>/dev/null)" ]; then
+            for ebnf_file in output/*.ebnf; do
+              if [ -f "$ebnf_file" ]; then
+                echo "Validating $ebnf_file"
+                if npm run check-ebnf -- "$ebnf_file"; then
+                  echo "✅ Validation passed for $ebnf_file"
+                else
+                  echo "❌ Validation failed for $ebnf_file"
+                  exit_code=1
+                fi
+              fi
+            done
+          else
+            echo "ℹ️ No EBNF files found to validate"
+          fi
+          
+          if [ $exit_code -ne 0 ]; then
+            echo "❌ Some EBNF files failed validation"
+            exit 1
+          else
+            echo "✅ All EBNF files passed validation"
+          fi
+
+      - name: Upload generated EBNF files
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: generated-ebnf-files
+          path: output/
+          retention-days: 30
+
+  lint-and-format:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check TypeScript compilation
+        run: npm run build
+
+      - name: Verify package structure
+        run: |
+          echo "Checking package structure..."
+          
+          # Check required files exist
+          test -f package.json || (echo "❌ Missing package.json" && exit 1)
+          test -f README.md || (echo "❌ Missing README.md" && exit 1)
+          test -f LICENSE || (echo "❌ Missing LICENSE" && exit 1)
+          test -f tsconfig.json || (echo "❌ Missing tsconfig.json" && exit 1)
+          
+          # Check source files
+          test -f g4-to-ebnf.ts || (echo "❌ Missing g4-to-ebnf.ts" && exit 1)
+          test -f ebnf-check.ts || (echo "❌ Missing ebnf-check.ts" && exit 1)
+          
+          # Check build outputs
+          test -f dist/g4-to-ebnf.js || (echo "❌ Missing dist/g4-to-ebnf.js" && exit 1)
+          test -f dist/ebnf-check.js || (echo "❌ Missing dist/ebnf-check.js" && exit 1)
+          
+          echo "✅ Package structure is valid"
+
+      - name: Test package installation
+        run: |
+          # Test that the package can be packed
+          npm pack --dry-run
+          echo "✅ Package can be packed successfully"

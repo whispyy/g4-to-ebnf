@@ -1,0 +1,225 @@
+name: Publish to NPM
+
+on:
+  push:
+    tags:
+      - 'v*'  # Triggers on version tags like v1.0.0, v1.2.3, etc.
+  workflow_dispatch:  # Allows manual triggering
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build project
+        run: npm run build
+
+      - name: Run tests
+        run: npm test
+
+      - name: Test CLI tools
+        run: |
+          # Test help commands
+          npm run g4-to-ebnf -- --help
+          npm run check-ebnf -- --help
+          
+          # Test version commands
+          npm run g4-to-ebnf -- --version
+          npm run check-ebnf -- --version
+          
+          # Test conversion with example
+          npm run g4-to-ebnf -- examples/SimpleLexer.g4 > test-output.ebnf
+          npm run check-ebnf -- test-output.ebnf
+
+  publish:
+    needs: test
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build project
+        run: npm run build
+
+      - name: Verify package contents
+        run: |
+          echo "Package contents:"
+          npm pack --dry-run
+          
+          echo "Checking required files:"
+          test -f dist/g4-to-ebnf.js || (echo "Missing g4-to-ebnf.js" && exit 1)
+          test -f dist/ebnf-check.js || (echo "Missing ebnf-check.js" && exit 1)
+          test -f package.json || (echo "Missing package.json" && exit 1)
+          test -f README.md || (echo "Missing README.md" && exit 1)
+          test -f LICENSE || (echo "Missing LICENSE" && exit 1)
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Publishing version: $VERSION"
+
+      - name: Update package.json version
+        run: |
+          CURRENT_VERSION=$(node -p "require('./package.json').version")
+          TARGET_VERSION="${{ steps.version.outputs.version }}"
+          
+          if [ "$CURRENT_VERSION" = "$TARGET_VERSION" ]; then
+            echo "✅ Package.json version ($CURRENT_VERSION) already matches tag version ($TARGET_VERSION)"
+          else
+            echo "Updating package.json from $CURRENT_VERSION to $TARGET_VERSION"
+            npm version $TARGET_VERSION --no-git-tag-version
+            echo "✅ Updated package.json to version $TARGET_VERSION"
+          fi
+
+      - name: Publish to NPM
+        run: |
+          echo "Publishing to npm..."
+          if npm publish --access public; then
+            echo "✅ Successfully published to npm"
+          else
+            EXIT_CODE=$?
+            if [ $EXIT_CODE -eq 1 ]; then
+              echo "⚠️ Publish failed - this might be because the version already exists on npm"
+              echo "Checking if version exists on npm..."
+              if npm view g4-to-ebnf@${{ steps.version.outputs.version }} version 2>/dev/null; then
+                echo "✅ Version ${{ steps.version.outputs.version }} already exists on npm - skipping publish"
+                exit 0
+              else
+                echo "❌ Publish failed for unknown reason"
+                exit $EXIT_CODE
+              fi
+            else
+              echo "❌ Publish failed with exit code $EXIT_CODE"
+              exit $EXIT_CODE
+            fi
+          fi
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Create GitHub Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ steps.version.outputs.version }}
+          body: |
+            ## Changes in v${{ steps.version.outputs.version }}
+            
+            ### Features
+            - Convert ANTLR4 grammar files (.g4) to Extended Backus-Naur Form (EBNF)
+            - Validate generated EBNF files for syntax correctness
+            - CLI tools with comprehensive help and error handling
+            - Docker support for containerized environments
+            - Complete CI/CD pipeline support
+            
+            ### Installation
+            ```bash
+            npm install -g g4-to-ebnf@${{ steps.version.outputs.version }}
+            ```
+            
+            ### Usage
+            ```bash
+            # Convert grammar file
+            g4-to-ebnf MyGrammar.g4 > output.ebnf
+            
+            # Validate EBNF
+            ebnf-check output.ebnf
+            ```
+            
+            See the [README](https://github.com/${{ github.repository }}/blob/main/README.md) for complete documentation.
+          draft: false
+          prerelease: false
+
+  check-docker-secrets:
+    needs: [test, publish]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    outputs:
+      docker-enabled: ${{ steps.check.outputs.docker-enabled }}
+    steps:
+      - name: Check Docker secrets
+        id: check
+        run: |
+          if [ -n "${{ secrets.DOCKERHUB_USERNAME }}" ] && [ -n "${{ secrets.DOCKERHUB_TOKEN }}" ]; then
+            echo "docker-enabled=true" >> $GITHUB_OUTPUT
+            echo "✅ Docker secrets configured - Docker publishing will proceed"
+          else
+            echo "docker-enabled=false" >> $GITHUB_OUTPUT
+            echo "ℹ️ Docker publishing skipped - DOCKERHUB_USERNAME or DOCKERHUB_TOKEN secrets not configured"
+            echo "To enable Docker publishing, add these secrets to your repository:"
+            echo "- DOCKERHUB_USERNAME: Your Docker Hub username"
+            echo "- DOCKERHUB_TOKEN: Your Docker Hub access token"
+            echo ""
+            echo "Docker publishing is optional and the npm package has been published successfully."
+          fi
+
+  publish-docker:
+    needs: [test, publish, check-docker-secrets]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v') && needs.check-docker-secrets.outputs.docker-enabled == 'true'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies and build
+        run: |
+          npm ci
+          npm run build
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/g4-to-ebnf:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/g4-to-ebnf:v${{ steps.version.outputs.version }}
+          platforms: linux/amd64,linux/arm64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

@@ -1,7 +1,9 @@
 # G4 to EBNF Converter
 
-[![CI Pipeline](https://gitlab.com/whispyy/g4-to-ebnf/badges/main/pipeline.svg)](https://gitlab.com/whispyy/g4-to-ebnf/-/pipelines)
+[![CI/CD Pipeline](https://github.com/yourusername/g4-to-ebnf/workflows/CI%2FCD%20Pipeline/badge.svg)](https://github.com/yourusername/g4-to-ebnf/actions)
+[![Publish to NPM](https://github.com/yourusername/g4-to-ebnf/workflows/Publish%20to%20NPM/badge.svg)](https://github.com/yourusername/g4-to-ebnf/actions)
 [![npm version](https://badge.fury.io/js/g4-to-ebnf.svg)](https://badge.fury.io/js/g4-to-ebnf)
+[![Docker](https://img.shields.io/docker/v/yourusername/g4-to-ebnf?label=docker)](https://hub.docker.com/r/yourusername/g4-to-ebnf)
 
 Convert ANTLR4 grammar files (.g4) to Extended Backus-Naur Form (EBNF) with validation and CI/CD support.
 
@@ -88,8 +90,8 @@ docker run --rm -v $(pwd):/app/input \
 ## Development
 
 ### Prerequisites
-- Node.js >= 14.0.0
-- npm >= 6.0.0
+- Node.js >= 22.0.0
+- npm >= 10.0.0
 
 ### Setup
 ```bash
@@ -144,27 +146,42 @@ Set these in your GitLab CI/CD settings:
 
 ### GitHub Actions
 
-For GitHub users, here's an equivalent workflow:
+This project includes comprehensive GitHub Actions workflows:
 
-```yaml
-# .github/workflows/ci.yml
-name: CI
-on: [push, pull_request]
-jobs:
-  build-and-test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
-        with:
-          node-version: '22'
-      - run: npm ci
-      - run: npm run build
-      - run: npm test
-      - run: mkdir -p output
-      - run: find . -name "*.g4" -not -path "./node_modules/*" | xargs -I {} npm run g4-to-ebnf -- {} > output/{}.ebnf
-      - run: find output -name "*.ebnf" | xargs -I {} npm run check-ebnf -- {}
-```
+#### 1. CI/CD Pipeline (`.github/workflows/ci.yml`)
+- **Triggers**: Push to main/develop, Pull Requests
+- **Features**:
+  - ✅ Multi-version Node.js testing (16, 18, 20)
+  - ✅ Automatic grammar discovery and conversion
+  - ✅ EBNF validation with detailed reporting
+  - ✅ Package structure verification
+  - ✅ Artifact storage for generated files
+
+#### 2. NPM Publishing (`.github/workflows/publish.yml`)
+- **Triggers**: Version tags (v1.0.0, v1.2.3, etc.) or manual dispatch
+- **Features**:
+  - ✅ Automated npm publishing
+  - ✅ GitHub release creation
+  - ✅ Docker image publishing (multi-platform)
+  - ✅ Version management from git tags
+  - ✅ Comprehensive pre-publish validation
+
+#### Setup for NPM Publishing
+See [`NPM-PUBLISHING-SETUP.md`](NPM-PUBLISHING-SETUP.md) for detailed setup instructions.
+
+**Quick Setup**:
+1. Create npm access token at [npmjs.com](https://www.npmjs.com)
+2. Add `NPM_TOKEN` secret to your GitHub repository
+3. Create and push a version tag: `git tag v1.0.0 && git push origin v1.0.0`
+4. The workflow automatically publishes to npm and creates a GitHub release
+
+#### Environment Variables
+Set these in your GitHub repository secrets:
+- `NPM_TOKEN` - For publishing to npm registry (required for publishing)
+- `DOCKERHUB_USERNAME` - Docker Hub username (optional)
+- `DOCKERHUB_TOKEN` - Docker Hub access token (optional)
+
+**Note**: Docker publishing is completely optional. If you don't configure the Docker Hub secrets, the workflow will skip Docker publishing and only publish to npm, which works perfectly fine.
 
 ## API Reference
 

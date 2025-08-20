@@ -48,7 +48,7 @@
   "homepage": "https://github.com/whispyy/g4-to-ebnf#readme",
   "engines": {
     "node": ">=22.0.0",
-    "npm": ">=6.0.0"
+    "npm": ">=10.0.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
