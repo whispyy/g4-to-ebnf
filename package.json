@@ -5,14 +5,17 @@
   "main": "dist/g4-to-ebnf.js",
   "bin": {
     "g4-to-ebnf": "./dist/g4-to-ebnf.js",
-    "ebnf-check": "./dist/ebnf-check.js"
+    "ebnf-check": "./dist/ebnf-check.js",
+    "ebnf-prettify": "./dist/ebnf-prettify.js"
   },
   "scripts": {
     "build": "tsc",
     "dev:g4-to-ebnf": "ts-node g4-to-ebnf.ts",
     "dev:check-ebnf": "ts-node ebnf-check.ts",
+    "dev:prettify-ebnf": "ts-node ebnf-prettify.ts",
     "g4-to-ebnf": "node dist/g4-to-ebnf.js",
     "check-ebnf": "node dist/ebnf-check.js",
+    "prettify-ebnf": "node dist/ebnf-prettify.js",
     "test": "npm run build && npm run test:integration",
     "test:integration": "bash test/integration-test.sh",
     "clean": "rm -rf dist",
@@ -36,7 +39,7 @@
     "cli",
     "typescript"
   ],
-  "author": "",
+  "author": "whispyy",
   "license": "MIT",
   "repository": {
     "type": "git",
