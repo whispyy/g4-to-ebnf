@@ -45,12 +45,19 @@ g4-to-ebnf MyLexer.g4 > output.ebnf
 
 # Convert a parser grammar
 g4-to-ebnf MyParser.g4 > output.ebnf
+
+# Convert with formatting for better readability
+g4-to-ebnf MyLexer.g4 --format > formatted.ebnf
+g4-to-ebnf MyLexer.g4 --prettify --width 80 > pretty.ebnf
 ```
 
 #### Convert Paired Grammars
 ```bash
 # Convert lexer + parser together
 g4-to-ebnf MyLexer.g4 MyParser.g4 > combined.ebnf
+
+# Convert with formatting and save to file
+g4-to-ebnf MyLexer.g4 MyParser.g4 --format --output combined.ebnf
 ```
 
 #### Validate Generated EBNF
@@ -62,6 +69,15 @@ ebnf-check output.ebnf
 ebnf-check output.ebnf --start myStartRule
 ```
 
+#### Format Existing EBNF Files
+```bash
+# Format an existing EBNF file (standalone tool)
+ebnf-prettify input.ebnf > formatted.ebnf
+
+# Format in-place with custom width
+ebnf-prettify --inplace --width 120 input.ebnf
+```
+
 ### Examples
 
 #### Basic Conversion
@@ -69,11 +85,14 @@ ebnf-check output.ebnf --start myStartRule
 # Generate EBNF from a simple lexer
 npm run g4-to-ebnf --silent -- examples/SimpleLexer.g4 > exemples/SimpleLexer.ebnf
 
-# Generate EBNF from lexer + parser pair
-npm run g4-to-ebnf --silent -- examples/SimpleLexer.g4 examples/SimpleParser.g4 > exemples/SimpleComplete.ebnf
+# Generate formatted EBNF from lexer + parser pair
+npm run g4-to-ebnf --silent -- examples/SimpleLexer.g4 examples/SimpleParser.g4 --format > exemples/SimpleComplete.ebnf
 
 # Validate the generated EBNF
 npm run check-ebnf exemples/SimpleLexer.ebnf
+
+# Format existing EBNF files
+npm run prettify-ebnf exemples/SimpleLexer.ebnf > exemples/SimpleLexer_formatted.ebnf
 ```
 
 ### Docker Usage
@@ -86,6 +105,10 @@ docker run --rm -v $(pwd):/app/input -v $(pwd)/output:/app/output \
 # Validate EBNF using Docker
 docker run --rm -v $(pwd):/app/input \
   whispyy/g4-to-ebnf:latest node dist/ebnf-check.js /app/input/MyGrammar.ebnf
+
+# Format EBNF using Docker
+docker run --rm -v $(pwd):/app/input -v $(pwd)/output:/app/output \
+  whispyy/g4-to-ebnf:latest node dist/ebnf-prettify.js /app/input/MyGrammar.ebnf > /app/output/MyGrammar_formatted.ebnf
 ```
 
 ## Development
@@ -121,6 +144,7 @@ npm run test:integration
 # Development mode (with ts-node)
 npm run dev:g4-to-ebnf examples/MyGrammar.g4
 npm run dev:check-ebnf output.ebnf
+npm run dev:prettify-ebnf output.ebnf
 ```
 
 ## CI/CD Integration
@@ -192,14 +216,22 @@ Converts ANTLR4 grammar files to EBNF format.
 
 **Usage:**
 ```bash
-g4-to-ebnf <Grammar.g4> [OtherGrammar.g4] > output.ebnf
+g4-to-ebnf <Grammar.g4> [OtherGrammar.g4] [options]
 ```
+
+**Options:**
+- `--format, --prettify` - Format the output EBNF for better readability
+- `--width N` - Set line width for formatting (default: 100)
+- `--output FILE` - Write output to file instead of stdout
+- `--help, -h` - Show help message
+- `--version, -v` - Show version information
 
 **Features:**
 - Strips ANTLR-specific constructs (actions, predicates, commands)
 - Handles both lexer and parser rules
 - Supports fragment rules
 - Maintains rule structure and alternatives
+- Optional pretty-printing with configurable line width
 
 ### ebnf-check
 
@@ -216,6 +248,26 @@ ebnf-check <file.ebnf> [--start <ruleName>]
 - Duplicate rule detection
 - Reachability analysis
 - Left recursion detection
+
+### ebnf-prettify
+
+Formats and pretty-prints EBNF files for better readability.
+
+**Usage:**
+```bash
+ebnf-prettify [--inplace] [--width N] <file.ebnf>
+```
+
+**Options:**
+- `--inplace, -i` - Modify the file in-place instead of printing to stdout
+- `--width N` - Set maximum line width for formatting (default: 100, minimum: 40)
+
+**Features:**
+- Splits top-level alternatives onto separate lines aligned under '::='
+- Normalizes spaces around tokens and operators
+- Preserves comments and maintains proper indentation
+- Configurable line width with intelligent wrapping
+- Handles complex EBNF constructs including nested rules
 
 ## Limitations
 
